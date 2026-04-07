@@ -538,7 +538,7 @@ function spinWheel(){
   btn.disabled=true;spinning=true;
   document.getElementById('spinResult').innerHTML='<div style="animation:spin .6s linear infinite;display:inline-block;font-size:24px;">🎡</div>';
   const targetSeg=Math.floor(Math.random()*SEGMENTS.length);
-  const target=-targetSeg*SEG-SEG/2;
+  const target=-Math.PI/2 - targetSeg*SEG - SEG/2;
   const fullSpins=4+Math.floor(Math.random()*3);
   const finalAngle=fullSpins*Math.PI*2+target-wheelAngle;
   let elapsed=0;
@@ -662,13 +662,21 @@ function updateUI(){
   tn.textContent=state.names[t].toUpperCase();
   tn.style.color=t===0?'var(--red2)':'var(--blue2)';
   var isModalOpen=document.getElementById('qModal').classList.contains('show');
+  var isAnswered = document.getElementById('qNextWrap').style.display === 'block';
+  var canUse = !spinning && (!isModalOpen || (isModalOpen && !isAnswered));
   [0,1].forEach(function(i){
     var pw=state.powers[i];
     ['joker','double','freeze','steal'].forEach(function(p){
       var el=document.getElementById(p+i);
       if(pw[p]<=0) el.classList.add('used');
       else el.classList.remove('used');
-      el.style.pointerEvents=(state.turn===i && !isModalOpen)?'auto':'none';
+      var enabled = false;
+      if (canUse) {
+         if (p === 'steal') enabled = (state.turn !== i && isModalOpen);
+         else enabled = (state.turn === i);
+      }
+      el.style.pointerEvents = enabled ? 'auto' : 'none';
+      if (!enabled) el.classList.add('used');
     });
   });
 }
@@ -677,12 +685,18 @@ function updateUI(){
 //  POWER CARDS
 // ══════════════════════════════════════════════════════════════
 function usePower(team,type){
-  if(state.turn!==team)return;
   if(state.powers[team][type]<=0)return;
-  if(document.getElementById('qModal').classList.contains('show')&&type!=='freeze')return;
+  if(type==='steal' && state.turn===team) return;
+  if(type!=='steal' && state.turn!==team) return;
   state.powers[team][type]--;
   if(type==='joker'){showToast('🃏 JOKER! Soal dilewati!','#FFD700');skipQuestion();}
-  else if(type==='double'){state.activeDouble=true;showToast('⚡ DOUBLE POIN aktif untuk soal ini!','#00E676');}
+  else if(type==='double'){
+    state.activeDouble=true;
+    showToast('⚡ DOUBLE POIN aktif untuk soal ini!','#00E676');
+    if(document.getElementById('qModal').classList.contains('show') && currentQ){
+        document.getElementById('qPtsLabel').textContent='💎 '+(currentQ.pts*2)+' PTS (2×!)';
+    }
+  }
   else if(type==='freeze'){
     state.activeFreeze=true;
     clearInterval(qTimer);
@@ -722,7 +736,7 @@ function openQuestion(segIdx){
 
 function getRandom(arr,usedKey){
   var avail=arr.filter(function(_,i){return state[usedKey].indexOf(i)===-1;});
-  if(avail.length===0){state[usedKey]=[];return arr[Math.floor(Math.random()*arr.length)];}
+  if(avail.length===0){state[usedKey]=[]; avail=arr;}
   var pick=avail[Math.floor(Math.random()*avail.length)];
   state[usedKey].push(arr.indexOf(pick));
   return pick;
@@ -750,7 +764,7 @@ function renderQuestion(q,seg){
       var b=document.createElement('button');
       b.className='q-option';
       b.innerHTML='<span class="q-opt-key">'+String.fromCharCode(65+i)+'</span><span>'+opt+'</span>';
-      b.onclick=(function(idx){return function(){answerMC(idx,q.ans,q,pts);};})(i);
+      b.onclick=(function(idx){return function(){answerMC(idx,q.ans,q,q.pts);};})(i);
       optDiv.appendChild(b);
     });
   } else if(q.type==='tf'){
@@ -760,7 +774,7 @@ function renderQuestion(q,seg){
       var b=document.createElement('button');
       b.className='q-option';
       b.innerHTML='<span style="font-size:22px;">'+(val?'✅':'❌')+'</span><span>'+label+'</span>';
-      b.onclick=(function(v){return function(){answerTF(v,q.tf,q,pts);};})(val);
+      b.onclick=(function(v){return function(){answerTF(v,q.tf,q,q.pts);};})(val);
       b.style.justifyContent='center';b.style.fontSize='16px';
       optDiv.appendChild(b);
     });
@@ -779,7 +793,7 @@ function renderQuestion(q,seg){
       var b=document.createElement('button');
       b.className='q-option';
       b.innerHTML='<span class="q-opt-key">👤</span><span>'+name+'</span>';
-      b.onclick=(function(n){return function(){answerSiapa(n,q.ans,q,pts);};})(name);
+      b.onclick=(function(n){return function(){answerSiapa(n,q.ans,q,q.pts);};})(name);
       optDiv.appendChild(b);
     });
   } else if(q.type==='fill'){
@@ -834,7 +848,7 @@ function skipQuestion(){
   clearInterval(qTimer);
   document.getElementById('qModal').classList.remove('show');
   state.activeDouble=false;state.activeFreeze=false;state.activeSteal=false;
-  advanceTurn();
+  nextStep();
 }
 
 function answerMC(picked,correct,q,pts){
@@ -890,8 +904,8 @@ function showResult(ok,q,pts){
     spawnParticles();
     showToast('🎉 +'+earnedPts+' untuk '+state.names[t]+'!','#00E676');
   } else {
-    state.hp[state.turn]=Math.max(0,state.hp[state.turn]-1);
-    showToast('😔 Salah! '+state.names[state.turn]+' -1 HP','#FF4444');
+    state.hp[t]=Math.max(0,state.hp[t]-1);
+    showToast('😔 Salah! '+state.names[t]+' -1 HP','#FF4444');
   }
   state.totalQ++;
   var expDiv=document.getElementById('qExplanation');
